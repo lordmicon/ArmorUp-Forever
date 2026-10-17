@@ -1,0 +1,4 @@
+<Bindings>
+    <Binding name="CLICK ArmorUpButton:LeftButton" header="ARMORUP" category="ADDONS">
+    </Binding>
+</Bindings>
