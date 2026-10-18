@@ -240,51 +240,84 @@ end
 -- just an invisible click layer (same layout PetHealthWatch uses). The
 -- container is not a protected frame, so it can be shown and hidden in combat.
 ----------------------------------------------------------------------
-local container, button, icon, nameText
+local container, visual, button, icon, nameText
+local DebugReport
 local settings
 local wasShown = false
+local popupVisible = false
+local lastTexture
 AU.testShow = false
 
+-- The popup is two separate frames:
+--   container: an invisible click area that holds the secure button
+--   visual:    a plain frame with the icon, text and border (no secure frames
+--              anywhere in its family, so showing/hiding it works in combat,
+--              like PetHealthWatch's screen flash)
+local function SetPopupVisible(v)
+    if not visual then return end
+    v = v and true or false
+    if v and not popupVisible and AU.debugWatch and DebugReport then DebugReport("popup appeared") end
+    popupVisible = v
+    if v then visual:Show() else visual:Hide() end
+end
+
 local function BuildPopup()
+    -- Click area (holds the secure button; nothing visual lives here)
     container = CreateFrame("Frame", "ArmorUpContainer", UIParent)
     container:SetSize(56, 56)
     container:SetFrameStrata("MEDIUM")
     container:SetMovable(true)
-    container:SetClampedToScreen(true)
     local p = ArmorUpDB.point
     container:SetPoint(p[1], _G[p[2]] or UIParent, p[3], p[4], p[5])
     container:SetScale(ArmorUpDB.scale or 1)
-    container:Hide()
 
-    local border = container:CreateTexture(nil, "BACKGROUND")
-    border:SetPoint("TOPLEFT", -2, 2)
-    border:SetPoint("BOTTOMRIGHT", 2, -2)
+    -- Visuals: separate plain frame, follows the click area
+    visual = CreateFrame("Frame", "ArmorUpVisual", UIParent)
+    visual:SetFrameStrata("HIGH")
+    visual:SetSize(56, 56)
+    visual:SetPoint("CENTER", container, "CENTER", 0, 0)
+    visual:SetScale(ArmorUpDB.scale or 1)
+    visual:EnableMouse(false)          -- clicks pass through to the button underneath
+    visual:Hide()
+
+    local border = visual:CreateTexture(nil, "BACKGROUND")
+    border:SetPoint("TOPLEFT", visual, "TOPLEFT", -2, 2)
+    border:SetPoint("BOTTOMRIGHT", visual, "BOTTOMRIGHT", 2, -2)
     border:SetColorTexture(0.53, 0.53, 0.93, 1)       -- warlock purple
 
-    icon = container:CreateTexture(nil, "ARTWORK")
-    icon:SetAllPoints(container)
+    icon = visual:CreateTexture(nil, "ARTWORK")
+    icon:SetAllPoints(visual)
     icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
-    local title = container:CreateFontString(nil, "OVERLAY")
+    local title = visual:CreateFontString(nil, "OVERLAY")
     title:SetFont("Fonts\\FRIZQT__.TTF", 16, "OUTLINE")
-    title:SetPoint("TOP", container, "BOTTOM", 0, -4)
+    title:SetPoint("TOP", visual, "BOTTOM", 0, -4)
     title:SetText("Armor Up!")
 
-    nameText = container:CreateFontString(nil, "OVERLAY")
+    nameText = visual:CreateFontString(nil, "OVERLAY")
     nameText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
     nameText:SetPoint("TOP", title, "BOTTOM", 0, -2)
 
     button = CreateFrame("Button", "ArmorUpButton", container, "SecureActionButtonTemplate")
     button:SetAllPoints(container)
     button:EnableMouse(true)
+    button:SetFrameStrata("HIGH")      -- above the picture and everything else near it
     button:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
-    button:SetAttribute("type", "spell")
-    button:SetAttribute("useOnKeyDown", false)
+    button:SetAttribute("useOnKeyDown", false)   -- act on release, like PetHealthWatch
     if button.SetPassThroughButtons then button:SetPassThroughButtons("RightButton") end
+
+    -- Debug aid (/armorup debug): tells us whether a click reaches the button in combat
+    button:HookScript("PreClick", function(self, btn)
+        if AU.debugWatch then
+            print(string.format("|cffff9900ArmorUp debug|r: click received (button=%s, combat=%s, action=%s)",
+                tostring(btn), tostring(InCombatLockdown() and true or false),
+                tostring(self:GetAttribute("macrotext1"))))
+        end
+    end)
 
     button:RegisterForDrag("LeftButton")
     button:SetScript("OnDragStart", function()
-        if not InCombatLockdown() then container:StartMoving() end
+        if popupVisible and not InCombatLockdown() then container:StartMoving() end
     end)
     button:SetScript("OnDragStop", function()
         container:StopMovingOrSizing()
@@ -292,6 +325,7 @@ local function BuildPopup()
         ArmorUpDB.point = { point, (rel and rel:GetName()) or "UIParent", relPoint, x, y }
     end)
     button:SetScript("OnEnter", function(self)
+        if not popupVisible then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("ArmorUp")
         local best = BestArmor()
@@ -300,6 +334,43 @@ local function BuildPopup()
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+local function ApplyScale()
+    local sc = ArmorUpDB.scale or 1
+    if container and not InCombatLockdown() then container:SetScale(sc) end
+    if visual then visual:SetScale(sc) end
+end
+
+-- Prints what the game reports about the popup (used by /armorup debug)
+DebugReport = function(tag)
+    local function g(obj, method)
+        if not obj then return "nil" end
+        local ok, a = pcall(obj[method], obj)
+        if not ok then return "err" end
+        if type(a) == "number" then return string.format("%.1f", a) end
+        return tostring(a)
+    end
+    local function line(msg) print("|cffff9900ArmorUp debug|r: " .. msg) end
+    line("--- " .. (tag or "report") .. " ---")
+    line(string.format("visual: shown=%s visible=%s alpha=%s effAlpha=%s size=%sx%s left=%s bottom=%s effScale=%s",
+        g(visual, "IsShown"), g(visual, "IsVisible"), g(visual, "GetAlpha"), g(visual, "GetEffectiveAlpha"),
+        g(visual, "GetWidth"), g(visual, "GetHeight"), g(visual, "GetLeft"), g(visual, "GetBottom"),
+        g(visual, "GetEffectiveScale")))
+    line(string.format("click area: shown=%s visible=%s size=%sx%s left=%s bottom=%s | button shown=%s visible=%s",
+        g(container, "IsShown"), g(container, "IsVisible"), g(container, "GetWidth"), g(container, "GetHeight"),
+        g(container, "GetLeft"), g(container, "GetBottom"), g(button, "IsShown"), g(button, "IsVisible")))
+    line(string.format("click action: type1=%s macrotext1=%s strata=%s",
+        tostring(button and button:GetAttribute("type1")), tostring(button and button:GetAttribute("macrotext1")),
+        g(button, "GetFrameStrata")))
+    line(string.format("screen: UIParent %sx%s scale=%s | popupVisible=%s inCombat=%s",
+        g(UIParent, "GetWidth"), g(UIParent, "GetHeight"), g(UIParent, "GetEffectiveScale"),
+        tostring(popupVisible), tostring(InCombatLockdown() and true or false)))
+    local best = BestArmor()
+    local active, left = ArmorStatus()
+    line(string.format("best=%s armorActive=%s left=%s texture=%s",
+        best and SpellName(best.id, best.fallbackName) or "none", tostring(active),
+        left and string.format("%.0f", left) or "?", icon and tostring(icon:GetTexture()) or "nil"))
 end
 
 local function ShouldRemind()
@@ -319,28 +390,34 @@ local function Refresh()
     local inCombat = InCombatLockdown()
 
     if inCombat and not ArmorUpDB.showInCombat then
-        container:Hide()
+        SetPopupVisible(false)
         wasShown = false
         return
     end
 
     local best = BestArmor()
-    if not best then container:Hide(); return end
+    if not best then SetPopupVisible(false); return end
 
     local name = SpellName(best.id, best.fallbackName)
     -- Secure attributes can't change in combat; they are set whenever we're out of it.
-    if not inCombat then button:SetAttribute("spell", name) end
-    icon:SetTexture(SpellTexture(best.id))
+    if not inCombat and AU.appliedSpell ~= name then
+        button:SetAttribute("type1", "macro")
+        button:SetAttribute("macrotext1", "/cast " .. name)
+        AU.appliedSpell = name
+    end
+    local tex = SpellTexture(best.id) or lastTexture or "Interface\\Icons\\INV_Misc_QuestionMark"
+    lastTexture = tex
+    icon:SetTexture(tex)
     nameText:SetText(name)
 
     if AU.testShow then
-        container:Show()
+        SetPopupVisible(true)
     elseif ShouldRemind() then
-        container:Show()
+        SetPopupVisible(true)
         if not wasShown and ArmorUpDB.sound then AU.PlayAlertSound() end
         wasShown = true
     else
-        container:Hide()
+        SetPopupVisible(false)
         wasShown = false
     end
     if AU.RefreshUI then AU.RefreshUI() end
@@ -622,7 +699,7 @@ local function BuildSettings()
         function() return math.floor((ArmorUpDB.scale or 1) * 100 + 0.5) end,
         function(v)
             ArmorUpDB.scale = v / 100
-            if container and not InCombatLockdown() then container:SetScale(ArmorUpDB.scale) end
+            ApplyScale()
         end,
         "Click an arrow for one step; hold Shift for a bigger step.")
     y = sizeStep.y
@@ -755,7 +832,7 @@ local function BuildSettings()
             if k ~= "point" then ArmorUpDB[k] = v end
         end
         UI.customDirty = false
-        if container and not InCombatLockdown() then container:SetScale(ArmorUpDB.scale) end
+        ApplyScale()
         Refresh()
         AU.RefreshUI()
     end)
@@ -864,6 +941,10 @@ SlashCmdList["ARMORUP"] = function(msg)
         AU.ToggleSettings()
     elseif cmd == "test" then
         AU.TestPopup()
+    elseif cmd == "debug" then
+        AU.debugWatch = not AU.debugWatch
+        DebugReport("now")
+        Print("debug watch " .. (AU.debugWatch and "ON: a report prints each time the popup appears." or "OFF."))
     elseif cmd == "status" then
         Print((AU.StatusText():gsub("\n", " | ")))
     else
@@ -925,7 +1006,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3)
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         if container and not ArmorUpDB.showInCombat then
-            container:Hide()
+            SetPopupVisible(false)
             wasShown = false
         else
             QueueRefresh()

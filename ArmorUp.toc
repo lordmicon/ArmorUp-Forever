@@ -2,7 +2,7 @@
 ## Title: ArmorUp
 ## Notes: Warlock only. Warns you shortly before Demon Skin / Demon Armor drops, with a clickable popup to refresh it. Type /armorup for settings.
 ## Author: You
-## Version: 1.3.0
+## Version: 1.3.3
 ## Category: Combat
 ## SavedVariables: ArmorUpDB
 

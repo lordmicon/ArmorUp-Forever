@@ -1,4 +1,4 @@
-ARMORUP  (version 1.3.0)
+ARMORUP  (version 1.3.3)
 Warlock armor reminder for WoW Forever (Interface 16001)
 ==========================================================
 
@@ -37,6 +37,12 @@ THE POPUP
    can refresh your armor in the middle of a fight. It hides while you are dead,
    and while you are mounted (that can be turned off too).
  - Moving or resizing the popup only works out of combat (a game restriction).
+ - Like PetHealthWatch, the click area is always present, and the picture
+   (icon, text, border) is a separate frame that is shown only when needed (that
+   is what lets it appear in combat). The invisible click area is
+   small and sits where the popup is; left-clicks on it do nothing else. If it
+   gets in your way, use "Test popup", drag it somewhere out of the way, and it
+   will stay there. Right-clicks pass through to the game world.
 
 SETTINGS
 Type /armorup (or /au) to open the settings window. You can also open it from
@@ -59,6 +65,11 @@ or make a macro containing:   /click ArmorUpButton
 OTHER COMMANDS
   /armorup test     show the popup for a few seconds
   /armorup status   print your best spell and whether the armor is active
+  /armorup debug    print what the game reports about the popup (position, size,
+                    visibility). Turns on "watch" mode, which prints a report each
+                    time the popup appears. Type it again to turn watch mode off.
+                    In watch mode, clicking the popup also prints a line, which
+                    shows whether the click reached the button (useful in combat).
 
 ALERT SOUND
 Pick the sound in the settings window. Each choice has a Play button to hear it:
